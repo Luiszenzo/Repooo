@@ -13,16 +13,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Copy files to VPS
-      uses: appleboy/scp-action@v0.1.3
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: "."
-        target: "~/app-source"
-        strip_components: 1
-
     - name: Deploy to server
       uses: appleboy/ssh-action@master
       with:
@@ -30,14 +20,37 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          # Sincronizar archivos nuevos a ambos ambientes
-          echo "📁 Sincronizando archivos desde GitHub..."
-          rsync -av --delete ~/app-source/ ~/app-blue/
-          rsync -av --delete ~/app-source/ ~/app-green/
+          # Crear directorio temporal para los nuevos archivos
+          mkdir -p ~/new-deployment
           
-          # Instalar dependencias en ambos ambientes
+          # Usar SCP para copiar TODOS los archivos desde GitHub
+          # Esto sobreescribirá completamente los archivos existentes
+          echo "📦 Copiando archivos desde GitHub..."
+          
+          # Primero eliminar archivos antiguos en ambos ambientes
+          echo "🧹 Limpiando archivos antiguos..."
+          rm -rf ~/app-blue/*
+          rm -rf ~/app-green/*
+          
+          # Crear archivo tar con todo el contenido del repo
+          tar -czf /tmp/app-from-github.tar.gz .
+          
+          # Copiar el tar al VPS
+          scp -o StrictHostKeyChecking=no /tmp/app-from-github.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/new-deployment/
+          
+          # Extraer en ambos ambientes
+          echo "📁 Extrayendo archivos nuevos..."
+          tar -xzf ~/new-deployment/app-from-github.tar.gz -C ~/app-blue/
+          tar -xzf ~/new-deployment/app-from-github.tar.gz -C ~/app-green/
+          
+          # Instalar dependencias
+          echo "📦 Instalando dependencias..."
           cd ~/app-blue && npm install --production
           cd ~/app-green && npm install --production
+          
+          # Limpiar
+          rm -rf ~/new-deployment
+          rm -f /tmp/app-from-github.tar.gz
           
           # Detectar ambiente actual y desplegar en el opuesto
           CURRENT_ENV=$(curl -s http://localhost | grep -o '"environment":"[^"]*' | cut -d'"' -f4 2>/dev/null || echo "unknown")
