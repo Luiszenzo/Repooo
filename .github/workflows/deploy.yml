@@ -1,34 +1,21 @@
-name: Deploy to VPS
+name: Deploy
 
 on:
-  workflow_run:
-    workflows: ["Build and Push Docker Image"]
-    types: [ "completed" ]
+  push:
+    branches:
+      - main
 
 jobs:
-  deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+  build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Conectar por SSH y desplegar
-        uses: appleboy/ssh-action@v1.0.0
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            echo "${{ secrets.REGISTRY_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            docker pull ghcr.io/${{ github.repository }}:latest || true
-
-            # Detener y eliminar contenedor previo si existe
-            docker stop nutritrack-app || true
-            docker rm nutritrack-app || true
-
-            # Ejecutar nueva versión
-            docker run -d --name nutritrack-app --restart=always \
-              -p 3000:3000 -p 3001:3001 \
-              ghcr.io/${{ github.repository }}:latest
-
-            docker ps
+          node-version: '18'
+      - name: Install dependencies
+        run: cd src && npm install
+      - name: Build Docker image
+        run: cd src && docker build -t blue-green-demo .
+      # Add deployment steps here
