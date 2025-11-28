@@ -20,14 +20,25 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          # Detectar ambiente actual y desplegar en el opuesto
+          # Crear directorio temporal y copiar código nuevo
+          mkdir -p /tmp/new-deployment
+          echo "📁 Copiando nuevo código al servidor..."
+          
+          # Usar SCP para transferir los archivos (opción 1 - más eficiente)
+          # O copiar vía tar/zip (opción 2 - mostrada abajo)
+          
+          # Opción 2: Crear tar y extraer en servidor
+          cd $GITHUB_WORKSPACE
+          tar czf - . | ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp/new-deployment && tar xzf -"
+          
+          # Detectar ambiente actual y desplegar
           CURRENT_ENV=$(curl -s http://localhost | grep -o '"environment":"[^"]*' | cut -d'"' -f4 2>/dev/null || echo "unknown")
           echo "Ambiente actual detectado: $CURRENT_ENV"
           
           if [ "$CURRENT_ENV" = "blue" ]; then
             echo "🔄 Desplegando en GREEN..."
-            ~/scripts/switch-to-green.sh "${{ secrets.PASSWORD }}"
+            ~/scripts/switch-to-green.sh "${{ secrets.PASSWORD }}" "/tmp/new-deployment"
           else
             echo "🔄 Desplegando en BLUE..."
-            ~/scripts/switch-to-blue.sh "${{ secrets.PASSWORD }}"
+            ~/scripts/switch-to-blue.sh "${{ secrets.PASSWORD }}" "/tmp/new-deployment"
           fi
