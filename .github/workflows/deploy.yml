@@ -30,6 +30,15 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
+          # Sincronizar archivos nuevos a ambos ambientes
+          echo "📁 Sincronizando archivos desde GitHub..."
+          rsync -av --delete ~/app-source/ ~/app-blue/
+          rsync -av --delete ~/app-source/ ~/app-green/
+          
+          # Instalar dependencias en ambos ambientes
+          cd ~/app-blue && npm install --production
+          cd ~/app-green && npm install --production
+          
           # Detectar ambiente actual y desplegar en el opuesto
           CURRENT_ENV=$(curl -s http://localhost | grep -o '"environment":"[^"]*' | cut -d'"' -f4 2>/dev/null || echo "unknown")
           echo "Ambiente actual detectado: $CURRENT_ENV"
