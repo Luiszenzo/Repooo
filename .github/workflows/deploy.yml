@@ -13,6 +13,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
     - name: Deploy to server
       uses: appleboy/ssh-action@master
       with:
@@ -20,25 +25,33 @@ jobs:
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
-          # Crear directorio temporal y copiar código nuevo
-          mkdir -p /tmp/new-deployment
-          echo "📁 Copiando nuevo código al servidor..."
+          # Crear directorio temporal con el nuevo código
+          DEPLOY_DIR="/tmp/deploy-$(date +%s)"
+          echo "📦 Preparando despliegue en: $DEPLOY_DIR"
           
-          # Usar SCP para transferir los archivos (opción 1 - más eficiente)
-          # O copiar vía tar/zip (opción 2 - mostrada abajo)
+          mkdir -p $DEPLOY_DIR
           
-          # Opción 2: Crear tar y extraer en servidor
-          cd $GITHUB_WORKSPACE
-          tar czf - . | ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp/new-deployment && tar xzf -"
+          # Copiar todo el código del repositorio al servidor
+          tar -czf - . | ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "tar -xzf - -C $DEPLOY_DIR"
           
-          # Detectar ambiente actual y desplegar
-          CURRENT_ENV=$(curl -s http://localhost | grep -o '"environment":"[^"]*' | cut -d'"' -f4 2>/dev/null || echo "unknown")
-          echo "Ambiente actual detectado: $CURRENT_ENV"
+          echo "✅ Código copiado al servidor"
+          
+          # Detectar ambiente actual
+          CURRENT_ENV=$(curl -s http://localhost:3000 || echo "unknown")
+          if [[ "$CURRENT_ENV" == *"blue"* ]]; then
+            CURRENT_ENV="blue"
+          elif [[ "$CURRENT_ENV" == *"green"* ]]; then
+            CURRENT_ENV="green"
+          else
+            CURRENT_ENV="unknown"
+          fi
+          
+          echo "🎯 Ambiente actual detectado: $CURRENT_ENV"
           
           if [ "$CURRENT_ENV" = "blue" ]; then
-            echo "🔄 Desplegando en GREEN..."
-            ~/scripts/switch-to-green.sh "${{ secrets.PASSWORD }}" "/tmp/new-deployment"
+            echo "🟢 Desplegando en GREEN..."
+            ~/scripts/switch-to-green.sh "${{ secrets.PASSWORD }}" "$DEPLOY_DIR"
           else
-            echo "🔄 Desplegando en BLUE..."
-            ~/scripts/switch-to-blue.sh "${{ secrets.PASSWORD }}" "/tmp/new-deployment"
+            echo "🔵 Desplegando en BLUE..."
+            ~/scripts/switch-to-blue.sh "${{ secrets.PASSWORD }}" "$DEPLOY_DIR"
           fi
